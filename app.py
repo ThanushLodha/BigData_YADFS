@@ -78,18 +78,12 @@ def data_node(data_node_id, data_queue):
         os.makedirs(storage_directory, exist_ok=True)
 
         if action == "store_block":
-            block_filename = os.path.join(storage_directory, f"block_{block_id}.dat")
+            block_filename = os.path.join(storage_directory, f"{file_path}_block{block_id}.dat")
             with open(block_filename, "ab") as block_file:
                 block_file.write(data if data else b"")
             print(f"DataNode-{data_node_id}: Stored Block-{block_id} as {block_filename}")
             block_directory = os.path.abspath(storage_directory)
             add_block_location(file_path, block_id, block_directory, mysql_connection)
-
-        elif action == "retrieve_block":
-            block_filename = os.path.join(storage_directory, f"block_{block_id}.dat")
-            with open(block_filename, "rb") as block_file:
-                retrieved_data = block_file.read()
-            print(f"DataNode-{data_node_id}: Retrieved Block-{block_id} from {block_filename}")
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
