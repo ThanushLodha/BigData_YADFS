@@ -3,8 +3,7 @@ import os
 
 
 def receive_block_data():
-    # Replace with the desired server IP address and port number
-    server_address = ('0.0.0.0', 12345)
+    server_address = ('192.168.0.112', 12345)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(server_address)
@@ -21,7 +20,7 @@ def receive_block_data():
                 metadata = conn.recv(1024).decode().split()
                 # file_path, block_id, data_node_id = metadata
 
-                block_filename = f"data_node_{metadata[2]}/{metadata[0]}_block{metadata[1]}.dat"
+                block_filename = f"client/data_node_{metadata[2]}/{metadata[0]}_block{metadata[1]}.dat"
                 os.makedirs(os.path.dirname(block_filename), exist_ok=True)
 
                 # Receive block data
