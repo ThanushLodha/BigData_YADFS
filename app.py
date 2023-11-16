@@ -4,6 +4,7 @@ import os
 import mysql.connector
 import multiprocessing
 from io import BytesIO
+import socket
 
 app = Flask(__name__)
 
@@ -29,7 +30,7 @@ def create_block_table(mysql_connection):
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 file_path VARCHAR(255) NOT NULL,
                 block_id INT NOT NULL,
-                data_node_ip VARCHAR(255) NOT NULL,
+                data_node_ip VARCHAR(15) NOT NULL,  -- Change the length as needed
                 block_directory VARCHAR(255) NOT NULL
             )
             """
@@ -45,14 +46,45 @@ def create_file(file_path, file_size, block_size, mysql_connection):
         )
         mysql_connection.commit()
 
-def add_block_location(file_path, block_id, block_directory, mysql_connection):
+def add_block_location(file_path, block_id, data_node_ip, block_directory, mysql_connection):
     with mysql_connection.cursor() as cursor:
         cursor.execute(
             "INSERT INTO block_metadata (file_path, block_id, data_node_ip, block_directory) "
             "VALUES (%s, %s, %s, %s)",
-            (file_path, block_id, "localhost", block_directory)
+            (file_path, block_id, data_node_ip, block_directory)
         )
         mysql_connection.commit()
+
+def store_block(data_node_id, file_path, block_id, data):
+    storage_directory = f"data_node_{data_node_id}"
+    os.makedirs(storage_directory, exist_ok=True)
+    
+    block_filename = os.path.join(storage_directory, f"{file_path}_block{block_id}.dat")
+    with open(block_filename, "ab") as block_file:
+        block_file.write(data if data else b"")
+    
+    return block_filename
+
+def send_block_data_to_server(file_path, block_id, block_filename,data_node_id):
+    server_ip = '192.168.218.51'  # Replace with the actual IP address of the central server
+    server_port = '12345'  # Replace with the desired port number
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((server_ip, int(server_port)))
+        
+        # Send metadata (file path, block id)
+        metadata = f"{file_path} {block_id} {data_node_id}\n"
+        s.sendall(metadata.encode())
+        
+        # Send block filename
+        s.sendall(block_filename.encode())
+        
+        # Send block data
+        with open(block_filename, "rb") as block_file:
+            block_data = block_file.read()
+            s.sendall(block_data)
+        
+        print(f"DataNode: Sent Block-{block_id} to Server")
 
 def data_node(data_node_id, data_queue):
     mysql_connection = mysql.connector.connect(
@@ -74,23 +106,21 @@ def data_node(data_node_id, data_queue):
         block_id = task["block_id"]
         data = task.get("data")
 
-        storage_directory = f"data_node_{data_node_id}"
-        os.makedirs(storage_directory, exist_ok=True)
+        block_filename = store_block(data_node_id, file_path, block_id, data)
 
-        if action == "store_block":
-            block_filename = os.path.join(storage_directory, f"{file_path}_block{block_id}.dat")
-            with open(block_filename, "ab") as block_file:
-                block_file.write(data if data else b"")
-            print(f"DataNode-{data_node_id}: Stored Block-{block_id} as {block_filename}")
-            block_directory = os.path.abspath(storage_directory)
-            add_block_location(file_path, block_id, block_directory, mysql_connection)
+        # Send block data to the central server
+        send_block_data_to_server(file_path, block_id, block_filename,data_node_id)
+        
+        # Update this line to include the correct IP address of the data node
+        data_node_ip = '192.168.218.51'  # Change this to the actual IP address
+        
+        add_block_location(file_path, block_id, data_node_ip, os.path.abspath(block_filename), mysql_connection)
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
     if request.method == 'POST':
         file = request.files['file']
         if file:
-            # Read the file content from the request directly
             file_content = BytesIO(file.read())
 
             file_size = len(file_content.getvalue())
