@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 from werkzeug.utils import secure_filename
 import mysql.connector
 import multiprocessing
@@ -54,7 +54,7 @@ def add_block_location(file_id,block_id,data_node,mysql_connection):
         mysql_connection.commit()
 
 def send_block_data_to_server(file_path, block_id, data, data_node_id,file_id):
-    server_ip = '192.168.1.169'
+    server_ip = '192.168.0.112'
     server_port = 12345
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -66,15 +66,79 @@ def send_block_data_to_server(file_path, block_id, data, data_node_id,file_id):
 
         print(f"DataNode: Sent Block-{block_id} to Server")
 
-        # fi_path = s.recv(1024).decode()
-        # print(fi_path)
-
 def get_file_id(file_name,mysqlconnection):
     cursor = mysqlconnection.cursor()
     query = """SELECT file_id FROM file_metadata WHERE file_name=%s"""
     cursor.execute(query,(file_name,))
     result = cursor.fetchone()
     return result[0]
+
+def data_node(data_node_id, data_queue):
+    mysql_connection = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="methmonk",
+        database="bigdata",
+    )
+
+    while True:
+        task = data_queue.get()
+
+        if task["action"] == "exit":
+            print(f"DataNode-{data_node_id} is exiting.")
+            break
+
+        file_path = task["file_path"]
+        block_id = task["block_id"]
+        data = task.get("data")
+        file_id = get_file_id(file_path,mysql_connection)
+
+        send_block_data_to_server(file_path, block_id, data, data_node_id,file_id)
+        add_block_location(file_id , block_id,data_node_id,mysql_connection)
+
+def get_node_id(file_id,block_id,mysql_connection):
+    cursor = mysql_connection.cursor()
+    query = """SELECT data_node FROM block_metadata WHERE file_id=%s AND block_id=%s"""
+    cursor.execute(query,(file_id,block_id))
+    result = cursor.fetchone()
+    return result[0]
+
+def reconstruct_file(file_id, num_blocks,file_name,mysql_connection):
+    reconstructed_data = b''
+    for block_id in range(num_blocks):
+        print(f"Sending block:{block_id}")
+        data_node_id = int(get_node_id(file_id,block_id,mysql_connection))
+        block_data = retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name)
+        print(f"Received block:{block_id}")
+        if not block_data:
+            continue
+        reconstructed_data += block_data
+    print(reconstructed_data)
+    if len(reconstructed_data)==0:
+        print(f"Failed to retrieve Block-{block_id} from the server.")
+        return None
+    return reconstructed_data
+
+def retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name):
+    server_ip = '192.168.0.112'
+    server_port = 12345
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((server_ip, server_port))
+
+        request_metadata = f"GET_BLOCK {file_id} {block_id} {file_name} {data_node_id}\n"
+        s.sendall(request_metadata.encode())
+
+        block_data = b""
+        while True:
+            data = s.recv(1024)
+            print(data)
+            if not data:
+                print("No data received")
+                break
+            block_data += data
+
+        return block_data
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
@@ -84,7 +148,7 @@ def upload_file():
             file_content = file.read()
 
             file_size = len(file_content)
-            block_size = 128 * 1024 * 1024  # 128 MB
+            block_size = 1024*1024
 
             mysql_connection = mysql.connector.connect(
                 host="localhost",
@@ -128,28 +192,65 @@ def upload_file():
 
     return render_template('upload.html')
 
-def data_node(data_node_id, data_queue):
+@app.route('/file_list', methods=['GET', 'POST'])
+def file_list():
     mysql_connection = mysql.connector.connect(
         host="localhost",
         user="root",
         password="methmonk",
         database="bigdata",
     )
+    if request.method == 'POST':
+        selected_file_id = request.form.get('file_id')
+        if selected_file_id:
+            return download_file(selected_file_id)
+        else:
+            return "Please select a file to download."
+    
+    # Fetch the list of files from the database
+    file_list_query = """SELECT file_id, file_name FROM file_metadata"""
+    cursor = mysql_connection.cursor()
+    cursor.execute(file_list_query)
+    file_list = cursor.fetchall()
 
-    while True:
-        task = data_queue.get()
+    return render_template('file_list.html', file_list=file_list)
 
-        if task["action"] == "exit":
-            print(f"DataNode-{data_node_id} is exiting.")
-            break
+@app.route('/download/<file_id>')
+def download_file(file_id):
+    mysql_connection = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="methmonk",
+        database="bigdata",
+    )
+    file_id = int(file_id)  # Convert to integer
+    metadata_query = """SELECT file_name, no_of_blocks FROM file_metadata WHERE file_id=%s"""
+    cursor = mysql_connection.cursor()
+    cursor.execute(metadata_query, (file_id,))
+    result = cursor.fetchone()
 
-        file_path = task["file_path"]
-        block_id = task["block_id"]
-        data = task.get("data")
-        file_id = get_file_id(file_path,mysql_connection)
+    if result:
+        original_filename, num_blocks = result
+        reconstructed_data = reconstruct_file(file_id, num_blocks,original_filename,mysql_connection)
 
-        send_block_data_to_server(file_path, block_id, data, data_node_id,file_id)
-        add_block_location(file_id , block_id,data_node_id,mysql_connection)
+        if reconstructed_data:
+            # Save the reconstructed data to a temporary file
+            temp_file_path = f"temp_reconstructed_file_{file_id}.dat"
+            with open(temp_file_path, 'wb') as temp_file:
+                temp_file.write(reconstructed_data)
+
+            # Send the temporary file as a response with appropriate headers
+            return send_file(
+                temp_file_path,
+                as_attachment=True,
+                download_name=original_filename,
+                mimetype='application/octet-stream'
+            )
+        else:
+            return "Failed to reconstruct and download the file."
+    else:
+        return "File metadata not found."
+
 
 if __name__ == '__main__':
     app.run(debug=True)
