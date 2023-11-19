@@ -1,60 +1,18 @@
-import socket
+from flask import Flask, request, jsonify,send_file
+from werkzeug.utils import secure_filename
 import os
+from database import *
 import mysql.connector
+import socket
+from threading import Thread
+import io
 
-def create_server_metadata(mysql_connection):
-    with mysql_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS server_block_metadata (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                file_id INT NOT NULL,
-                block_id INT NOT NULL,
-                block_name VARCHAR(255) NOT NULL,
-                block_location VARCHAR(255) NOT NULL
-            )
-            """
-        )
-        mysql_connection.commit()
+other_system_app = Flask(__name__)
 
-def add_block_location(file_id,block_id,block_name,block_location,mysql_connection):
-    with mysql_connection.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO server_block_metadata (file_id, block_id, block_name, block_location) "
-            "VALUES (%s, %s, %s,%s)",
-            (file_id, block_id, block_name,block_location)
-        )
-        mysql_connection.commit()
-
-def get_blockfilename(file_id,block_id,mysql_connection):
-    cursor = mysql_connection.cursor()
-    query = """SELECT block_location FROM server_block_metadata WHERE file_id=%s AND block_id=%s"""
-    cursor.execute(query,(file_id,block_id))
-    result = cursor.fetchone()
-    return result[0]
-
-def serve_block(file_id, block_id,file_name,data_node_id, client_socket,mysql_connection):
-    block_filename = get_blockfilename(file_id,block_id,mysql_connection)
-    i = 0
-    try:
-        with open(block_filename, "rb") as block_file:
-            print(f"Reading {block_id}")
-            while True:
-                data = block_file.read()
-                print(data)
-                if not data:
-                    break
-                client_socket.sendall(data)
-                print(f"Sent {len(data)} bytes{i}")
-                i = i+1
-            print(f"Finished sending Block-{block_id} to DataNode-{data_node_id}")
-    except FileNotFoundError:
-        print(f"Block not found: {block_filename}")
-    # finally:
-    #     client_socket.close()
-
-def receive_block_data():
-    server_address = ('192.168.0.112', 12345)
+@other_system_app.route('/receive_block', methods=['POST'])
+def receive_block():
+    if 'block_data' not in request.files:
+        return jsonify({'error': 'No block_data part'})
     mysql_connection = mysql.connector.connect(
                 host="localhost",
                 user="root",
@@ -62,42 +20,27 @@ def receive_block_data():
                 database="bigdata",
             )
     create_server_metadata(mysql_connection)
+    action = request.form['action']
+    if action == 'store_data':
+        block_data = request.files['block_data']
+        data_node = int(request.form['data_node']) 
+        file_path = request.form['file_path']
+        block_id = request.form['block_id'] 
+        file_id = request.form['file_id']
+        block_filename = f"client/data_node_{data_node}/{file_path}_block{block_id}.dat"
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(server_address)
-        s.listen()
+        os.makedirs(os.path.dirname(block_filename), exist_ok=True)
+        block_data.save(block_filename)
+        block_directory = os.path.abspath(block_filename)
 
-        print(f"Server listening on {server_address}")
+        print(f"Received Block-{block_id} from DataNode-{data_node} and saved as {block_filename}")
+        print(f"File path :{block_directory}")
+        block_name = f"{file_path}_block{block_id}.dat"
+        add_block_location_server(file_id,block_id,block_name,block_directory,mysql_connection)
 
-        while True:
-            conn, addr = s.accept()
-            # i = 0
-            with conn:
-                print(f"Connection from {addr}")
-                metadata = conn.recv(1024).decode().split()
+        return jsonify({'message': 'Block received successfully'})
+    
 
-                if metadata[0]=="GET_BLOCK":
-                    serve_block(metadata[1],metadata[2],metadata[3],metadata[4], conn,mysql_connection)
-                else:
-                 block_filename = f"client/data_node_{metadata[2]}/{metadata[0]}_block{metadata[1]}.dat"
-                 os.makedirs(os.path.dirname(block_filename), exist_ok=True)
 
-                 print("Starting to read the file")
-                 with open(block_filename, "wb") as block_file:
-                     while True:
-                         # print(f"Writing data:{i}")
-                         # i = i + 1
-                         data = conn.recv(1024)
-                         if not data:
-                             break
-                         block_file.write(data)
-                 block_directory = os.path.abspath(block_filename)
-
-                 print(f"Received Block-{metadata[1]} from DataNode-{metadata[2]} and saved as {block_filename}")
-                 print(f"File path :{block_directory}")
-                 block_name = f"{metadata[0]}_block{metadata[1]}.dat"
-                 add_block_location(metadata[3],metadata[1],block_name,block_directory,mysql_connection)
-                 # conn.sendall(block_directory.encode())
-
-if __name__ == "__main__":
-    receive_block_data()
+if __name__ == '__main__':
+    other_system_app.run(host='localhost', port=12345, debug=True)

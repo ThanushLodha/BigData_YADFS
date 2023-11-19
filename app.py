@@ -1,107 +1,39 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request,send_file
+import os
 from werkzeug.utils import secure_filename
-import mysql.connector
-import multiprocessing
-import socket
 import math
+import multiprocessing
+import time
+import mysql.connector
+from database import *
+import socket
+import requests
 
 app = Flask(__name__)
 
-def create_file_table(mysql_connection):
-    with mysql_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS file_metadata (
-                file_id INT AUTO_INCREMENT PRIMARY KEY,
-                file_name VARCHAR(255) NOT NULL UNIQUE,
-                size VARCHAR(255) NOT NULL,
-                no_of_blocks INT NOT NULL
-            )
-            """
-        )
-        mysql_connection.commit()
-
-def create_block_table(mysql_connection):
-    with mysql_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS block_metadata (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                file_id INT NOT NULL,
-                block_id INT NOT NULL,
-                data_node INT NOT NULL
-            )
-            """
-        )
-        mysql_connection.commit()
-
-def create_file(file_name,file_size,block,mysql_connection):
-    with mysql_connection.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO file_metadata (file_name,size,no_of_blocks) "
-            "VALUES (%s, %s,%s)",
-            (file_name, file_size,block)
-        )
-        mysql_connection.commit()
-
-def add_block_location(file_id,block_id,data_node,mysql_connection):
-    with mysql_connection.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO block_metadata (file_id, block_id, data_node) "
-            "VALUES (%s, %s, %s)",
-            (file_id, block_id, data_node)
-        )
-        mysql_connection.commit()
-
-def send_block_data_to_server(file_path, block_id, data, data_node_id,file_id):
-    server_ip = '192.168.0.112'
-    server_port = 12345
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((server_ip, server_port))
-
-        metadata = f"{file_path} {block_id} {data_node_id} {file_id}\n"
-        s.sendall(metadata.encode())
-        s.sendall(data)
-
-        print(f"DataNode: Sent Block-{block_id} to Server")
-
-def get_file_id(file_name,mysqlconnection):
-    cursor = mysqlconnection.cursor()
-    query = """SELECT file_id FROM file_metadata WHERE file_name=%s"""
-    cursor.execute(query,(file_name,))
-    result = cursor.fetchone()
-    return result[0]
-
-def data_node(data_node_id, data_queue):
+  
+def send_block_to_server(block_id, block_data, data_node, file_path,file_id):
     mysql_connection = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="methmonk",
-        database="bigdata",
-    )
+                host="localhost",
+                user="root",
+                password="methmonk",
+                database="bigdata",
+            )
+    
+    api_endpoint = 'http://localhost:12345/receive_block'
 
-    while True:
-        task = data_queue.get()
+    try:
+        data = {'data_node': data_node , 'action':'store_data' ,'file_path' : file_path , 'block_id':block_id,'file_id':file_id}
+        files = {'block_data': (f'block_{block_id}.bin', block_data)}
+        response = requests.post(api_endpoint, data=data, files=files)
 
-        if task["action"] == "exit":
-            print(f"DataNode-{data_node_id} is exiting.")
-            break
-
-        file_path = task["file_path"]
-        block_id = task["block_id"]
-        data = task.get("data")
-        file_id = get_file_id(file_path,mysql_connection)
-
-        send_block_data_to_server(file_path, block_id, data, data_node_id,file_id)
-        add_block_location(file_id , block_id,data_node_id,mysql_connection)
-
-def get_node_id(file_id,block_id,mysql_connection):
-    cursor = mysql_connection.cursor()
-    query = """SELECT data_node FROM block_metadata WHERE file_id=%s AND block_id=%s"""
-    cursor.execute(query,(file_id,block_id))
-    result = cursor.fetchone()
-    return result[0]
+        if response.status_code == 200:
+            print(f"Block {block_id} sent successfully to data_node {data_node}")
+            add_block_location(file_id,block_id,data_node,mysql_connection)
+        else:
+            print(f'Failed to send Block {block_id} to data_node {data_node}. Status code: {response.status_code}')
+    except Exception as e:
+        print(f'An error occurred while sending Block {block_id} to data_node {data_node}: {str(e)}')
 
 def reconstruct_file(file_id, num_blocks,file_name,mysql_connection):
     reconstructed_data = b''
@@ -121,7 +53,7 @@ def reconstruct_file(file_id, num_blocks,file_name,mysql_connection):
 
 def retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name):
     server_ip = '192.168.0.112'
-    server_port = 12345
+    server_port = 12346
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((server_ip, server_port))
@@ -140,6 +72,7 @@ def retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name):
 
         return block_data
 
+
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
     if request.method == 'POST':
@@ -148,46 +81,32 @@ def upload_file():
             file_content = file.read()
 
             file_size = len(file_content)
-            block_size = 1024*1024
-
+            block_size = 1024*128
             mysql_connection = mysql.connector.connect(
                 host="localhost",
                 user="root",
                 password="methmonk",
                 database="bigdata",
             )
-
             create_file_table(mysql_connection)
             create_block_table(mysql_connection)
 
             filename = secure_filename(file.filename)
-            no_of_blocks = math.ceil(file_size/block_size)
+            no_of_blocks = math.ceil(file_size / block_size)
             create_file(filename, file_size,no_of_blocks, mysql_connection)
-
-            num_data_nodes = 3
-            data_queue = multiprocessing.Queue()
-            data_nodes = []
-
-            for i in range(num_data_nodes):
-                data_node_process = multiprocessing.Process(target=data_node, args=(i + 1, data_queue))
-                data_node_process.start()
-                data_nodes.append(data_node_process)
-
-            block_id = 0
-            while True:
+            file_id  = get_file_id(filename,mysql_connection)
+            delete_file(file_id,mysql_connection)
+            processes = []
+            for block_id in range(no_of_blocks):
                 block_data = file_content[block_id * block_size: (block_id + 1) * block_size]
-                if not block_data:
-                    break
+                data_node = block_id % 3
+                process = multiprocessing.Process(target=send_block_to_server, args=(block_id, block_data,data_node,filename,file_id))
+                processes.append(process)
+                process.start()
 
-                data_queue.put({"action": "store_block", "file_path": filename, "block_id": block_id, "data": block_data})
-                block_id += 1
-
-            for i in range(num_data_nodes):
-                data_queue.put({"action": "exit"})
-
-            for data_node_process in data_nodes:
-                data_node_process.join()
-
+            for process in processes:
+                process.join()
+            create_file(filename, file_size,no_of_blocks, mysql_connection)
             return "File uploaded and processed successfully!"
 
     return render_template('upload.html')
@@ -207,7 +126,6 @@ def file_list():
         else:
             return "Please select a file to download."
     
-    # Fetch the list of files from the database
     file_list_query = """SELECT file_id, file_name FROM file_metadata"""
     cursor = mysql_connection.cursor()
     cursor.execute(file_list_query)
@@ -223,34 +141,34 @@ def download_file(file_id):
         password="methmonk",
         database="bigdata",
     )
-    file_id = int(file_id)  # Convert to integer
+    file_id = int(file_id)  
+
     metadata_query = """SELECT file_name, no_of_blocks FROM file_metadata WHERE file_id=%s"""
     cursor = mysql_connection.cursor()
     cursor.execute(metadata_query, (file_id,))
     result = cursor.fetchone()
+    print(result)
 
     if result:
         original_filename, num_blocks = result
         reconstructed_data = reconstruct_file(file_id, num_blocks,original_filename,mysql_connection)
 
         if reconstructed_data:
-            # Save the reconstructed data to a temporary file
             temp_file_path = f"temp_reconstructed_file_{file_id}.dat"
             with open(temp_file_path, 'wb') as temp_file:
                 temp_file.write(reconstructed_data)
-
-            # Send the temporary file as a response with appropriate headers
-            return send_file(
+            response = send_file(
                 temp_file_path,
                 as_attachment=True,
                 download_name=original_filename,
                 mimetype='application/octet-stream'
             )
+
+            return response
         else:
             return "Failed to reconstruct and download the file."
     else:
         return "File metadata not found."
-
 
 if __name__ == '__main__':
     app.run(debug=True)
