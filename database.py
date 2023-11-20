@@ -97,7 +97,7 @@ def get_node_id(file_id,block_id,mysql_connection):
     cursor.execute(query,(file_id,block_id))
     result = cursor.fetchone()
     cursor.close()
-    return result[0]
+    return result
 
 def get_replicate_id(file_id,block_id,mysql_connection):
     cursor = mysql_connection.cursor()
@@ -140,7 +140,7 @@ def get_blockfilename(file_id,block_id,mysql_connection):
     result = cursor.fetchone()
     cursor.close()
     print(result)
-    return result[0]
+    return result
 
 def get_replicatename(file_id,block_id,mysql_connection):
     cursor = mysql_connection.cursor()
@@ -151,9 +151,30 @@ def get_replicatename(file_id,block_id,mysql_connection):
     print(result)
     return result
 
-def delete_file(file_id,mysql_connection):
+def delete_file_client(file_id,mysql_connection):
     cursor = mysql_connection.cursor()
     query = """DELETE FROM file_metadata WHERE file_id=%s"""
+    cursor.execute(query,(file_id,))
+    mysql_connection.commit()
+    cursor.close()
+
+def delete_server_block_metadata(file_id,block_id,mysql_connection):
+    cursor = mysql_connection.cursor()
+    query = """DELETE FROM server_block_metadata where file_id=%s AND block_id=%s"""
+    cursor.execute(query,(file_id,block_id))
+    mysql_connection.commit()
+    cursor.close()
+    
+def delete_server_replicate_metadata(file_id,block_id,mysql_connection):
+    cursor = mysql_connection.cursor()
+    query = """DELETE FROM server_replicate_metadata where file_id=%s AND block_id=%s"""
+    cursor.execute(query,(file_id,block_id))
+    mysql_connection.commit()
+    cursor.close()
+
+def delete_block_data(file_id,mysql_connection):
+    cursor = mysql_connection.cursor()
+    query = """DELETE FROM block_metadata WHERE file_id=%s"""
     cursor.execute(query,(file_id,))
     mysql_connection.commit()
     cursor.close()
