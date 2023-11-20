@@ -92,7 +92,7 @@ This project implements a distributed file system designed for efficient storage
 - Cleanup: Optionally deleting temporary data and connections to Data Nodes.
 
 - **Listing of the Files:**
-    - Endpoint: /file_list
+    - Endpoint: `/file_list`
     -Method: GET
     -Parameters: None
     -Description: Retrieves a list of files in the distributed file system.
@@ -111,6 +111,28 @@ This project implements a distributed file system designed for efficient storage
   - 
 ![alt text](https://github.com/ThanushLodha/BigData_YADFS/raw/main/DistributedFileSystem.png)
 
+## Running the code
+#### Uploading
+1. Run the file app.py 
+```bash
+python -u app.py
+```
+2. Run the file server.py
+ ```bash
+ python -u server.py
+ ```
+You will be sent to a page <<localhost:200232/>> where they have the option to select the file they want to upload.
+
+#### Downloading
+1. Run both the above files and additionally run the file download.py
+ ```
+ python -u download.py
+ ```
+    
+You will be sent to a page <<localhost:200232/file_list>> where they have the option to select the file they want to download from the server.
+
+#### Deleting
+For deleting a file go to the page <<localhost:200232/delete_file>> where they have an option to delete the file they want and its replica from the server.
 
 ## Acknowledgments
 
