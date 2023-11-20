@@ -109,7 +109,7 @@ This project implements a distributed file system designed for efficient storage
 - **Fault Tolerance:**
   - DataNode failures are handled by maintaining multiple replicas of data blocks.
  
-![alt text]([http://url/to/img.png](https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_24374007bf423b03e93ce684761f5fb1.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1700502173&Signature=L5fllVxR5hSaNXz8y8Todnz6kPI%3D)https://hackmd-prod-images.s3-ap-northeast-1.amazonaws.com/uploads/upload_24374007bf423b03e93ce684761f5fb1.png?AWSAccessKeyId=AKIA3XSAAW6AWSKNINWO&Expires=1700502173&Signature=L5fllVxR5hSaNXz8y8Todnz6kPI%3D)
+![alt text]()
 
 ## Acknowledgments
 
