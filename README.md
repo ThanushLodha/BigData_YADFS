@@ -90,6 +90,12 @@ This project implements a distributed file system designed for efficient storage
 - Reassembly: Reconstructing the original file from downloaded blocks.
 - File Completion Check: Validating successful retrieval of all data blocks.
 - Cleanup: Optionally deleting temporary data and connections to Data Nodes.
+
+- **Listing of the Files:**
+    - Endpoint: /file_list
+    -Method: GET
+    -Parameters: None
+    -Description: Retrieves a list of files in the distributed file system.
 ...
 
 ## Configuration
