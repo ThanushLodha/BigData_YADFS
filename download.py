@@ -10,7 +10,7 @@ def serve_block(file_id, block_id,file_name,data_node_id, client_socket,mysql_co
             print(f"Reading {block_id}")
             while True:
                 data = block_file.read()
-                print(data)
+                # print(data)
                 if not data:
                     break
                 client_socket.sendall(data)
@@ -19,16 +19,34 @@ def serve_block(file_id, block_id,file_name,data_node_id, client_socket,mysql_co
             print(f"Finished sending Block-{block_id} to DataNode-{data_node_id}")
     except FileNotFoundError:
         print(f"Block not found: {block_filename}")
+        block_filename = get_replicatename(file_id,block_id,mysql_connection)
+        for j in block_filename:
+            try:
+                with open(j[0], "rb") as block_file:
+                    print(f"Reading {block_id}")
+                    while True:
+                        data = block_file.read()
+                        # print(data)
+                        if not data:
+                            break
+                        client_socket.sendall(data)
+                        print(f"Sent {len(data)} bytes{i}")
+                        i = i+1
+                    print(f"Finished sending Block-{block_id} to DataNode-{data_node_id}")
+                    break
+            except FileNotFoundError:
+                continue
 
 def download_block_data():
-    server_address = ('192.168.0.112', 12346)
-    mysql_connection = mysql.connector.connect(
+    server_address = ('0.0.0.0', 12346)
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        mysql_connection = mysql.connector.connect(
                 host="localhost",
                 user="root",
                 password="methmonk",
                 database="bigdata",
             )
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(server_address)
         s.listen()
 

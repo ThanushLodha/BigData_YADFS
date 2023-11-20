@@ -20,6 +20,7 @@ def receive_block():
                 database="bigdata",
             )
     create_server_metadata(mysql_connection)
+    create_replicate_server_table(mysql_connection)
     action = request.form['action']
     if action == 'store_data':
         block_data = request.files['block_data']
@@ -43,4 +44,4 @@ def receive_block():
 
 
 if __name__ == '__main__':
-    other_system_app.run(host='localhost', port=12345, debug=True)
+    other_system_app.run(host='192.168.237.240', port=12345, debug=True)
