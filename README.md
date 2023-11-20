@@ -41,11 +41,13 @@ This project implements a distributed file system designed for efficient storage
 - Name Node Operation: Implementing changes to the metadata based on the operation.
 - Response: Sending a response to the client regarding the operation's status.
 
+
 - **Delete Directory:**
   - Endpoint: `/delete_directory`
   - Method: POST
   - Parameters: `directory_name`
   - Description: Deletes an existing directory in the distributed file system.
+    
 ### Delete Process Flow
 - Identification: The client initiates a request to delete a specific file or directory from the DFS.
 - Name Node Verification: The Name Node verifies the existence of the file or directory being deleted.
@@ -63,6 +65,7 @@ This project implements a distributed file system designed for efficient storage
   - Method: POST
   - Parameters: `file`
   - Description: Uploads a file to the distributed file system.
+    
 ### Upload Process Flow
 - File Splitting: The file is divided into fixed-size blocks.
 - Block Creation: Each block is assigned a unique identifier.
@@ -77,6 +80,7 @@ This project implements a distributed file system designed for efficient storage
   - Method: POST
   - Parameters: `file_name`
   - Description: Downloads a file from the distributed file system.
+    
 ### Download Process Flow
 - Client Request: Initiating a request to download a file from the DFS.
 - Metadata Retrieval: Retrieving information about the file's structure and block locations.
