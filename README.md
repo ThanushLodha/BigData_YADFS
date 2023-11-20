@@ -64,7 +64,6 @@ This project implements a distributed file system designed for efficient storage
 
 - **Name Node Configuration:**
   - The name node service is assumed to have 100% uptime.
-  - Periodic ping checks between the name node and data nodes ensure availability.
 
 - **Data Node Configuration:**
   - Data nodes are responsible for data storage and handling read/write operations.
