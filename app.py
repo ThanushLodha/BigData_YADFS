@@ -11,16 +11,44 @@ import requests
 
 app = Flask(__name__)
 
-  
+def create_replicate_table(mysql_connection):
+    with mysql_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS replicate_metadata (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                file_id INT NOT NULL,
+                block_id INT NOT NULL,
+                data_node INT NOT NULL
+            )
+            """
+        )
+        mysql_connection.commit()
+def add_replicate_location(file_id,block_id,data_node,mysql_connection):
+    with mysql_connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO replicate_metadata (file_id, block_id, data_node) "
+            "VALUES (%s, %s, %s)",
+            (file_id, block_id, data_node)
+        )
+        mysql_connection.commit()
+def get_replicate_id(file_id,block_id,mysql_connection):
+    cursor = mysql_connection.cursor()
+    query = """SELECT data_node FROM replicate_metadata WHERE file_id=%s AND block_id=%s"""
+    cursor.execute(query,(file_id,block_id))
+    result = cursor.fetchall()
+    cursor.close()
+    return result
+
 def send_block_to_server(block_id, block_data, data_node, file_path,file_id):
     mysql_connection = mysql.connector.connect(
                 host="localhost",
                 user="root",
-                password="methmonk",
+                password="mysql",
                 database="bigdata",
             )
     
-    api_endpoint = 'http://localhost:12345/receive_block'
+    api_endpoint = 'http://192.168.237.240:12345/receive_block'
 
     try:
         data = {'data_node': data_node , 'action':'store_data' ,'file_path' : file_path , 'block_id':block_id,'file_id':file_id}
@@ -30,6 +58,32 @@ def send_block_to_server(block_id, block_data, data_node, file_path,file_id):
         if response.status_code == 200:
             print(f"Block {block_id} sent successfully to data_node {data_node}")
             add_block_location(file_id,block_id,data_node,mysql_connection)
+            for i in range(3):
+                if i!=data_node:
+                    replicate_file(block_id,block_data,i,file_path,file_id)
+        else:
+            print(f'Failed to send Block {block_id} to data_node {data_node}. Status code: {response.status_code}')
+    except Exception as e:
+        print(f'An error occurred while sending Block {block_id} to data_node {data_node}: {str(e)}')
+
+def replicate_file(block_id,block_data,data_node,file_path,file_id):
+    mysql_connection = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="mysql",
+                database="bigdata",
+            )
+    
+    api_endpoint = 'http://192.168.237.240:12345/receive_block'
+
+    try:
+        data = {'data_node': data_node , 'action':'store_data' ,'file_path' : file_path , 'block_id':block_id,'file_id':file_id}
+        files = {'block_data': (f'block_{block_id}.bin', block_data)}
+        response = requests.post(api_endpoint, data=data, files=files)
+
+        if response.status_code == 200:
+            print(f"Block {block_id} sent successfully to data_node {data_node}")
+            add_replicate_location(file_id,block_id,data_node,mysql_connection)
         else:
             print(f'Failed to send Block {block_id} to data_node {data_node}. Status code: {response.status_code}')
     except Exception as e:
@@ -41,18 +95,27 @@ def reconstruct_file(file_id, num_blocks,file_name,mysql_connection):
         print(f"Sending block:{block_id}")
         data_node_id = int(get_node_id(file_id,block_id,mysql_connection))
         block_data = retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name)
-        print(f"Received block:{block_id}")
+        
         if not block_data:
+            data_node_id = get_replicate_id(file_id,block_id,mysql_connection)
+            print(data_node_id)
+            for i in data_node_id:
+                block_data = retrieve_blocks_from_server(file_id, block_id,i[0],file_name)
+                if block_data:
+                    print("IN close")
+                    reconstructed_data+=block_data
+                    break
             continue
         reconstructed_data += block_data
-    print(reconstructed_data)
+        print(f"Received block:{block_id}")
+    # print(reconstructed_data)
     if len(reconstructed_data)==0:
         print(f"Failed to retrieve Block-{block_id} from the server.")
         return None
     return reconstructed_data
 
 def retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name):
-    server_ip = '192.168.0.112'
+    server_ip = '192.168.237.240'
     server_port = 12346
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -64,7 +127,7 @@ def retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name):
         block_data = b""
         while True:
             data = s.recv(1024)
-            print(data)
+            # print(data)
             if not data:
                 print("No data received")
                 break
@@ -81,15 +144,16 @@ def upload_file():
             file_content = file.read()
 
             file_size = len(file_content)
-            block_size = 1024*128
+            block_size = 1024
             mysql_connection = mysql.connector.connect(
                 host="localhost",
                 user="root",
-                password="methmonk",
+                password="mysql",
                 database="bigdata",
             )
             create_file_table(mysql_connection)
             create_block_table(mysql_connection)
+            create_replicate_table(mysql_connection)
 
             filename = secure_filename(file.filename)
             no_of_blocks = math.ceil(file_size / block_size)
@@ -116,7 +180,7 @@ def file_list():
     mysql_connection = mysql.connector.connect(
         host="localhost",
         user="root",
-        password="methmonk",
+        password="mysql",
         database="bigdata",
     )
     if request.method == 'POST':
@@ -138,7 +202,7 @@ def download_file(file_id):
     mysql_connection = mysql.connector.connect(
         host="localhost",
         user="root",
-        password="methmonk",
+        password="mysql",
         database="bigdata",
     )
     file_id = int(file_id)  
