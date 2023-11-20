@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File List</title>
+    <link rel="stylesheet" type="text/css" href="../static/file.css">
+</head>
+<body>
+    <h1>File List</h1>
+    
+    <form method="POST" action="{{ url_for('delete_file') }}">
+        <label for="file_id">Select a file to delete:</label>
+        <select name="file_id" id="file_id">
+            {% for file_id, file_name in file_list %}
+                <option value="{{ file_id }}">{{ file_name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Delete</button>
+    </form>
+</body>
+</html>
