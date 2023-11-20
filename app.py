@@ -95,7 +95,7 @@ def upload_file():
             no_of_blocks = math.ceil(file_size / block_size)
             create_file(filename, file_size,no_of_blocks, mysql_connection)
             file_id  = get_file_id(filename,mysql_connection)
-            delete_file(file_id,mysql_connection)
+            # delete_file(file_id,mysql_connection)
             processes = []
             for block_id in range(no_of_blocks):
                 block_data = file_content[block_id * block_size: (block_id + 1) * block_size]
@@ -106,7 +106,7 @@ def upload_file():
 
             for process in processes:
                 process.join()
-            create_file(filename, file_size,no_of_blocks, mysql_connection)
+            # create_file(filename, file_size,no_of_blocks, mysql_connection)
             return "File uploaded and processed successfully!"
 
     return render_template('upload.html')
