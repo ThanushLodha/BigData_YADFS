@@ -121,7 +121,7 @@ python -u app.py
  ```bash
  python -u server.py
  ```
-You will be sent to a page <<localhost:200232/>> where they have the option to select the file they want to upload.
+
 
 #### Downloading
 1. Run both the above files and additionally run the file download.py
@@ -129,10 +129,6 @@ You will be sent to a page <<localhost:200232/>> where they have the option to s
  python -u download.py
  ```
     
-You will be sent to a page <<localhost:200232/file_list>> where they have the option to select the file they want to download from the server.
-
-#### Deleting
-For deleting a file go to the page <<localhost:200232/delete_file>> where they have an option to delete the file they want and its replica from the server.
 
 ## Acknowledgments
 
