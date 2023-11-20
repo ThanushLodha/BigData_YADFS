@@ -11,6 +11,8 @@ import requests
 
 app = Flask(__name__)
 
+server_ip = '192.168.237.240'
+server_port = 12346
 def create_replicate_table(mysql_connection):
     with mysql_connection.cursor() as cursor:
         cursor.execute(
@@ -93,8 +95,8 @@ def reconstruct_file(file_id, num_blocks,file_name,mysql_connection):
     reconstructed_data = b''
     for block_id in range(num_blocks):
         print(f"Sending block:{block_id}")
-        data_node_id = int(get_node_id(file_id,block_id,mysql_connection))
-        block_data = retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name)
+        data_node_id = get_node_id(file_id,block_id,mysql_connection)
+        block_data = retrieve_blocks_from_server(file_id, block_id,data_node_id[0],file_name)
         
         if not block_data:
             data_node_id = get_replicate_id(file_id,block_id,mysql_connection)
@@ -115,8 +117,7 @@ def reconstruct_file(file_id, num_blocks,file_name,mysql_connection):
     return reconstructed_data
 
 def retrieve_blocks_from_server(file_id, block_id,data_node_id,file_name):
-    server_ip = '192.168.237.240'
-    server_port = 12346
+    
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((server_ip, server_port))
@@ -196,7 +197,59 @@ def file_list():
     file_list = cursor.fetchall()
 
     return render_template('file_list.html', file_list=file_list)
+@app.route('/delete_file',methods=['GET','POST'])
+def delete_file():
+    mysql_connection = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="mysql",
+        database="bigdata",
+    )
+    if request.method == 'POST':
+        selected_file_id = request.form.get('file_id')
+        if selected_file_id:
+            return delete(selected_file_id)
+        else:
+            return "Please select a file to delete."
+    
+    file_list_query = """SELECT file_id, file_name FROM file_metadata"""
+    cursor = mysql_connection.cursor()
+    cursor.execute(file_list_query)
+    file_list = cursor.fetchall()
 
+    return render_template('delete_file.html', file_list=file_list)
+@app.route('/delete/<file_id>')
+def delete(file_id):
+    mysql_connection = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="mysql",
+        database="bigdata",
+    )
+
+    file_id = int(file_id)  
+    metadata_query = """SELECT file_name, no_of_blocks FROM file_metadata WHERE file_id=%s"""
+    cursor = mysql_connection.cursor()
+    cursor.execute(metadata_query, (file_id,))
+    result = cursor.fetchone()
+    print(result)
+    if result:
+        original_filename,num_blocks = result
+        del_file(file_id, num_blocks,original_filename,mysql_connection)
+        delete_block_data(file_id,mysql_connection)
+        delete_file_client(file_id,mysql_connection)
+    return "DELETED FILE"
+
+def del_file(file_id,num_blocks,filename,mysql_connection):
+    for block_id in range(num_blocks):
+        data_node_id = get_node_id(file_id,block_id,mysql_connection)
+        with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+            s.connect((server_ip,server_port))
+            request_metadata = f"DELETE_BLOCK {file_id} {block_id} {filename} {data_node_id}\n"
+            s.sendall(request_metadata.encode())
+            print(f"Deleted {block_id} from server")
+
+        
 @app.route('/download/<file_id>')
 def download_file(file_id):
     mysql_connection = mysql.connector.connect(
