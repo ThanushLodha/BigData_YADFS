@@ -109,7 +109,8 @@ This project implements a distributed file system designed for efficient storage
 - **Fault Tolerance:**
   - DataNode failures are handled by maintaining multiple replicas of data blocks.
   - 
- ![alt text](https://github.com/[ThanushLodha]/[BigData_YADFS]/blob/[main]/DistributedFileSystem?raw=true)
+![alt text](https://github.com/ThanushLodha/BigData_YADFS/raw/main/DistributedFileSystem.png)
+
 
 ## Acknowledgments
 
